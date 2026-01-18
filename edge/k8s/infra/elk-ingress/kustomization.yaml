@@ -1,0 +1,8 @@
+resources:
+  - namespace.yaml
+  - service-es.yaml
+  - service-kibana.yaml
+  - endpointslice-es.yaml
+  - endpointslice-kibana.yaml
+  - ingress-es.yaml
+  - ingress-kibana.yaml

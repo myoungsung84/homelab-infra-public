@@ -1,0 +1,31 @@
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: minio-s3-static
+  namespace: infra
+  labels:
+    kubernetes.io/service-name: minio-s3
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 9000
+endpoints:
+  - addresses:
+      - "<INTERNAL_IP>"
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: minio-console-static
+  namespace: infra
+  labels:
+    kubernetes.io/service-name: minio-console
+addressType: IPv4
+ports:
+  - name: http
+    protocol: TCP
+    port: 9001
+endpoints:
+  - addresses:
+      - "<INTERNAL_IP>"

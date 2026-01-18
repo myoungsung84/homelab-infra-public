@@ -1,0 +1,17 @@
+services:
+  redis:
+    image: redis:7
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - ./data:/data
+    networks:
+      - infra
+
+networks:
+  infra:
+    external: true
+    name: infra

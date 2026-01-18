@@ -1,0 +1,32 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+
+    command: server /data --console-address ":9001"
+
+    env_file:
+      - .env
+
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_SERVER_URL: ${MINIO_SERVER_URL}
+      MINIO_BROWSER_REDIRECT_URL: ${MINIO_BROWSER_REDIRECT_URL}
+
+    volumes:
+      - ./data:/data
+      - ./config:/root/.minio
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    networks:
+      - infra
+
+networks:
+  infra:
+    external: true
+    name: infra
