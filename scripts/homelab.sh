@@ -47,7 +47,11 @@ MINIO_KUSTOMIZE_DIR="${REMOTE_DIR}/${MINIO_KUSTOMIZE_DIR_REL}"
 ELK_KUSTOMIZE_DIR_REL="${ELK_KUSTOMIZE_DIR_REL:-edge/k8s/infra/elk-ingress}"
 ELK_KUSTOMIZE_DIR="${REMOTE_DIR}/${ELK_KUSTOMIZE_DIR_REL}"
 
-is_remote="${REMOTE_MODE:-0}"  # 0=PC, 1=server
+# ✅ Observer (Filebeat DaemonSet)
+FILEBEAT_KUSTOMIZE_DIR_REL="${FILEBEAT_KUSTOMIZE_DIR_REL:-edge/k8s/observer/filebeat}"
+FILEBEAT_KUSTOMIZE_DIR="${REMOTE_DIR}/${FILEBEAT_KUSTOMIZE_DIR_REL}"
+
+is_remote="${REMOTE_MODE:-0}" # 0=PC, 1=server
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "❌ '$1' 명령이 없습니다."; exit 1; }
@@ -80,6 +84,18 @@ ensure_paths_remote() {
 
   [[ -d "$MINIO_KUSTOMIZE_DIR" ]] || { echo "❌ MinIO Kustomize dir 없음: $MINIO_KUSTOMIZE_DIR"; exit 1; }
   [[ -d "$ELK_KUSTOMIZE_DIR" ]] || { echo "❌ ELK Kustomize dir 없음: $ELK_KUSTOMIZE_DIR"; exit 1; }
+
+  # ✅ observer/filebeat
+  [[ -d "$FILEBEAT_KUSTOMIZE_DIR" ]] || { echo "❌ Filebeat Kustomize dir 없음: $FILEBEAT_KUSTOMIZE_DIR"; exit 1; }
+
+  # ✅ kubeconfig (no root access for /etc/rancher/k3s/k3s.yaml)
+  if [[ ! -f "${KUBECONFIG:-/home/ubuntu/.kube/config}" ]]; then
+    echo "❌ kubeconfig 없음: ${KUBECONFIG:-/home/ubuntu/.kube/config}"
+    echo "   서버에서 아래 실행 후 다시 시도:"
+    echo "   sudo mkdir -p /home/ubuntu/.kube && sudo cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config"
+    echo "   sudo chown -R ubuntu:ubuntu /home/ubuntu/.kube && sudo chmod 600 /home/ubuntu/.kube/config"
+    exit 1
+  fi
 }
 
 sync_to_server() {
@@ -102,7 +118,9 @@ run_remote() {
   sync_to_server
   ssh -t "$HOST" \
     "REMOTE_MODE=1 REMOTE_DIR='$REMOTE_DIR' NETWORK_NAME='$NETWORK_NAME' \
+     KUBECONFIG='/home/ubuntu/.kube/config' \
      MINIO_KUSTOMIZE_DIR_REL='$MINIO_KUSTOMIZE_DIR_REL' ELK_KUSTOMIZE_DIR_REL='$ELK_KUSTOMIZE_DIR_REL' \
+     FILEBEAT_KUSTOMIZE_DIR_REL='$FILEBEAT_KUSTOMIZE_DIR_REL' \
      bash '$REMOTE_DIR/scripts/homelab.sh' '$subcmd' $*"
 }
 
@@ -114,11 +132,12 @@ targets:
   all (default)
   db | redis | minio | elk
   es | kibana   (restart/logs/status 용도)
+  filebeat      (k8s DaemonSet)
 
 commands:
   sync
-  up [target]            : docker up (+ target ingress apply)
-  down [target]          : ingress delete(가능한 경우) + docker down
+  up [target]            : docker up (+ target ingress apply) + (filebeat는 edge apply)
+  down [target]          : ingress delete(가능한 경우) + docker down + (filebeat는 edge delete)
   restart [target]       : docker restart (target만)
   status [target]        : docker ps + edge 리소스(필요 시)
   logs [target]          : docker logs -f
@@ -128,14 +147,16 @@ commands:
   docker-status [target] : docker ps
   docker-pull [target]   : docker pull
 
-  edge-up [target]       : kubectl apply -k (minio/elk)
-  edge-down [target]     : kubectl delete -k (minio/elk)
-  edge-status            : kubectl -n infra get ing,svc,endpointslices
+  edge-up [target]       : kubectl apply -k (minio/elk/filebeat)
+  edge-down [target]     : kubectl delete -k (minio/elk/filebeat)
+  edge-status            : kubectl -n infra get ing,svc,endpointslices (+ observer filebeat)
 
 예)
   homelab up
   homelab up elk
   homelab down elk
+  homelab up filebeat
+  homelab edge-up filebeat
   homelab restart es
   homelab logs kibana
 EOF
@@ -160,6 +181,15 @@ fi
 # -------------------------
 need_cmd docker
 need_cmd kubectl
+
+# ✅ force kubeconfig for k3s-symlinked kubectl
+export KUBECONFIG="${KUBECONFIG:-/home/ubuntu/.kube/config}"
+
+# ✅ kubectl wrapper (k3s symlink 'kubectl' tends to pick /etc/rancher/k3s/k3s.yaml if not explicit)
+kc() {
+  KUBECONFIG="$KUBECONFIG" kubectl "$@"
+}
+
 ensure_paths_remote
 
 # -------------------------
@@ -277,13 +307,15 @@ edge_apply_target() {
   local t="$1"
   case "$t" in
     all)
-      kubectl apply -k "$MINIO_KUSTOMIZE_DIR"
-      kubectl apply -k "$ELK_KUSTOMIZE_DIR"
+      kc apply -k "$MINIO_KUSTOMIZE_DIR"
+      kc apply -k "$ELK_KUSTOMIZE_DIR"
+      kc apply -k "$FILEBEAT_KUSTOMIZE_DIR"
       ;;
-    minio) kubectl apply -k "$MINIO_KUSTOMIZE_DIR" ;;
-    elk) kubectl apply -k "$ELK_KUSTOMIZE_DIR" ;;
+    minio) kc apply -k "$MINIO_KUSTOMIZE_DIR" ;;
+    elk) kc apply -k "$ELK_KUSTOMIZE_DIR" ;;
+    filebeat) kc apply -k "$FILEBEAT_KUSTOMIZE_DIR" ;;
     *)
-      echo "❌ edge-up target: all|minio|elk"
+      echo "❌ edge-up target: all|minio|elk|filebeat"
       exit 1
       ;;
   esac
@@ -293,13 +325,15 @@ edge_delete_target() {
   local t="$1"
   case "$t" in
     all)
-      kubectl delete -k "$ELK_KUSTOMIZE_DIR" --ignore-not-found || true
-      kubectl delete -k "$MINIO_KUSTOMIZE_DIR" --ignore-not-found || true
+      kc delete -k "$FILEBEAT_KUSTOMIZE_DIR" --ignore-not-found || true
+      kc delete -k "$ELK_KUSTOMIZE_DIR" --ignore-not-found || true
+      kc delete -k "$MINIO_KUSTOMIZE_DIR" --ignore-not-found || true
       ;;
-    minio) kubectl delete -k "$MINIO_KUSTOMIZE_DIR" --ignore-not-found || true ;;
-    elk) kubectl delete -k "$ELK_KUSTOMIZE_DIR" --ignore-not-found || true ;;
+    minio) kc delete -k "$MINIO_KUSTOMIZE_DIR" --ignore-not-found || true ;;
+    elk) kc delete -k "$ELK_KUSTOMIZE_DIR" --ignore-not-found || true ;;
+    filebeat) kc delete -k "$FILEBEAT_KUSTOMIZE_DIR" --ignore-not-found || true ;;
     *)
-      echo "❌ edge-down target: all|minio|elk"
+      echo "❌ edge-down target: all|minio|elk|filebeat"
       exit 1
       ;;
   esac
@@ -310,33 +344,42 @@ edge_delete_target() {
 # -------------------------
 case "$cmd" in
   up)
-    echo "🚀 [docker] up ($target)"
-    docker_up_target "$target"
+    # filebeat는 docker target이 아님 → docker는 스킵하고 edge만
+    if [[ "$target" != "filebeat" ]]; then
+      echo "🚀 [docker] up ($target)"
+      docker_up_target "$target"
+    fi
 
-    # 🔥 ingress는 docker up 때 같이
-    echo "🚀 [edge] apply ingress (auto)"
+    # 🔥 k8s 리소스 apply (ingress + observer)
+    echo "🚀 [edge] apply (auto)"
     case "$target" in
       all) edge_apply_target all ;;
       minio) edge_apply_target minio ;;
       elk) edge_apply_target elk ;;
-      *) : ;; # db/redis는 ingress 없음
+      filebeat) edge_apply_target filebeat ;;
+      *) : ;; # db/redis/es/kibana는 edge 없음
     esac
 
     echo "✅ up done"
     ;;
 
   down)
-    # 🔥 ingress 붙은 건 down에서 같이 정리
-    echo "🧹 [edge] delete ingress (auto)"
+    # 🔥 k8s 리소스 delete (ingress + observer)
+    echo "🧹 [edge] delete (auto)"
     case "$target" in
       all) edge_delete_target all ;;
       minio) edge_delete_target minio ;;
       elk) edge_delete_target elk ;;
+      filebeat) edge_delete_target filebeat ;;
       *) : ;;
     esac
 
-    echo "🧹 [docker] down ($target)"
-    docker_down_target "$target"
+    # filebeat는 docker target이 아님 → docker는 스킵
+    if [[ "$target" != "filebeat" ]]; then
+      echo "🧹 [docker] down ($target)"
+      docker_down_target "$target"
+    fi
+
     echo "✅ down done"
     ;;
 
@@ -349,9 +392,14 @@ case "$cmd" in
   status)
     echo "📦 [docker] status ($target)"
     docker_status_target "$target"
+
     echo
     echo "📦 [edge] resources (ns=infra)"
-    kubectl -n infra get ing,svc,endpointslices || true
+    kc -n infra get ing,svc,endpointslices || true
+
+    echo
+    echo "📦 [observer] filebeat"
+    kc -n observer get ds,pods -l app=filebeat -o wide || true
     ;;
 
   logs)
@@ -405,7 +453,9 @@ case "$cmd" in
     ;;
 
   edge-status)
-    kubectl -n infra get ing,svc,endpointslices || true
+    kc -n infra get ing,svc,endpointslices || true
+    echo
+    kc -n observer get ds,pods -l app=filebeat -o wide || true
     ;;
 
   ""|-h|--help|help)
