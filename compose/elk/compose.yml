@@ -22,7 +22,8 @@ services:
     image: docker.elastic.co/kibana/kibana:8.11.3
     container_name: kibana
     restart: unless-stopped
-    environment:
+    environment:      
+      - SERVER_PUBLICBASEURL=${SERVER_PUBLICBASEURL}
       - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS}
       - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME}
       - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD}
