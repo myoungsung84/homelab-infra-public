@@ -20,26 +20,59 @@ Thumbs.db
 secrets.yml
 secret.yaml
 secrets/
-*.pem          # 개인키 & 공개키
-*.key          # 암호화 키
-*.crt          # SSL/TLS 인증서
-*.pfx          # Windows 인증서
-*.p12          # PKCS12 인증서
+# 개인키 & 공개키
+*.pem
+# 암호화 키
+*.key
+# SSL/TLS 인증서
+*.crt
+# Windows 인증서
+*.pfx
+# PKCS12 인증서
+*.p12
 
 # credentials & config (자격증명 및 설정파일)
-.kube/         # Kubernetes config 디렉토리
-kubeconfig     # K8s 인증 파일
-.aws/          # AWS credentials 디렉토리
-.ssh/          # SSH 개인키 디렉토리
-*password*     # 비밀번호 포함 파일
-*credential*   # 자격증명 파일
-*api_key*      # API 키 파일
-*token*        # 토큰 파일
-config         # 민감한 설정파일
-.env.local     # 로컬 환경변수 (개발용)
-.env.*.local   # 환경별 로컬 설정 (스테이징, 프로덕션 등)
+# Kubernetes config 디렉토리
+.kube/
+# K8s 인증 파일
+kubeconfig
+# AWS credentials 디렉토리
+.aws/
+# SSH 개인키 디렉토리
+.ssh/
+# 비밀번호 포함 파일
+*password*
+# 자격증명 파일
+*credential*
+# API 키 파일
+*api_key*
+# 토큰 파일
+*token*
+# 민감한 설정파일
+config
+# 로컬 환경변수 (개발용)
+.env.local
+# 환경별 로컬 설정 (스테이징, 프로덕션 등)
+.env.*.local
 
 # domains & addresses (도메인 및 주소 정보)
-*.domain       # 도메인 설정 파일
-hosts.txt      # hosts 파일 (IP-도메인 매핑)
-dns.conf       # DNS 설정 파일
+# 도메인 설정 파일
+*.domain
+# hosts 파일 (IP-도메인 매핑)
+hosts.txt
+# DNS 설정 파일
+dns.conf
+
+# app artifacts
+# GeoIP 데이터/설정 파일
+geoip.conf
+# Node.js 의존성 디렉토리
+node_modules/
+
+# build outputs
+# 빌드 결과물
+dist/
+# 빌드 결과물
+build/
+# 빌드 결과물
+out/

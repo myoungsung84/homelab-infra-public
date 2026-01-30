@@ -19,6 +19,7 @@ A Docker Compose + Kubernetes infrastructure playground for running containerize
 | **Elasticsearch** | 로그 저장 및 분석 | 9200 |
 | **Kibana** | 로그 시각화 & 조회 | 5601 |
 | **MinIO** | S3처럼 쓸 수 있는 파일 저장소 | 9000 (API) / 9001 (웹) |
+| **Geo API** | IP Geo 조회 API | 9010 |
 
 ### 설정하는 방법
 
@@ -111,6 +112,7 @@ compose/minio/.env           # MinIO 비밀번호
 | Elasticsearch | 9200 | elasticsearch:8.11.3 | Log Indexing |
 | Kibana | 5601 | kibana:8.11.3 | Log Visualization |
 | MinIO | 9000/9001 | minio/minio:latest | S3-compatible Storage |
+| Geo API | 9010 | geo-api (local build) | IP Geo Lookup API |
 
 ### Kubernetes
 
@@ -154,6 +156,10 @@ MINIO_ROOT_PASSWORD=your-secure-password
 
 # compose/redis/.env
 REDIS_PASSWORD=your-secure-password
+
+# compose/geo/.env
+GEOIPUPDATE_ACCOUNT_ID=your-account-id
+GEOIPUPDATE_LICENSE_KEY=your-license-key
 ```
 
 ### 3. Update Domain Names
@@ -183,8 +189,10 @@ spec:
 ```bash
 ./scripts/homelab.sh up                    # Start all services
 ./scripts/homelab.sh up db                 # Start specific service
+./scripts/homelab.sh up geo                # Start Geo API
 ./scripts/homelab.sh down                  # Stop all services
 ./scripts/homelab.sh restart es            # Restart service
+./scripts/homelab.sh logs geo              # View Geo API logs
 ./scripts/homelab.sh logs kibana           # View logs
 ./scripts/homelab.sh status                # Check status
 ```
@@ -204,6 +212,7 @@ spec:
 - Kibana: `http://localhost:5601`
 - MinIO API: `http://localhost:9000`
 - MinIO Console: `http://localhost:9001`
+- Geo API: `http://localhost:9010` (endpoints: `/health`, `/geo/me`, `/geo/ip?ip=1.1.1.1`)
 
 ### Kubernetes Ingress
 
@@ -235,6 +244,7 @@ homelab-infra-public/
 │   ├── redis/                                   # Redis Cache
 │   ├── elk/                                     # Elasticsearch + Kibana
 │   └── minio/                                   # MinIO Object Storage
+│   └── geo/                                     # Geo API + GeoIP Update
 ├── edge/                                        # Kubernetes configs
 │   └── k8s/
 │       ├── cert-manager/                        # TLS Certificate Manager

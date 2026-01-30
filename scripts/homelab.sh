@@ -32,11 +32,13 @@ DB_DIR="${REMOTE_DIR}/compose/db"
 REDIS_DIR="${REMOTE_DIR}/compose/redis"
 MINIO_DIR="${REMOTE_DIR}/compose/minio"
 ELK_DIR="${REMOTE_DIR}/compose/elk"
+GEO_DIR="${REMOTE_DIR}/compose/geo"
 
 DB_COMPOSE="${DB_DIR}/compose.yml"
 REDIS_COMPOSE="${REDIS_DIR}/compose.yml"
 MINIO_COMPOSE="${MINIO_DIR}/compose.yml"
 ELK_COMPOSE="${ELK_DIR}/compose.yml"
+GEO_COMPOSE="${GEO_DIR}/compose.yml"
 
 NETWORK_NAME="${NETWORK_NAME:-infra}"
 
@@ -76,11 +78,13 @@ ensure_paths_remote() {
   [[ -d "$REDIS_DIR" ]] || { echo "❌ REDIS_DIR 없음: $REDIS_DIR"; exit 1; }
   [[ -d "$MINIO_DIR" ]] || { echo "❌ MINIO_DIR 없음: $MINIO_DIR"; exit 1; }
   [[ -d "$ELK_DIR" ]] || { echo "❌ ELK_DIR 없음: $ELK_DIR"; exit 1; }
+  [[ -d "$GEO_DIR" ]] || { echo "❌ GEO_DIR 없음: $GEO_DIR"; exit 1; }
 
   [[ -f "$DB_COMPOSE" ]] || { echo "❌ DB compose 없음: $DB_COMPOSE"; exit 1; }
   [[ -f "$REDIS_COMPOSE" ]] || { echo "❌ Redis compose 없음: $REDIS_COMPOSE"; exit 1; }
   [[ -f "$MINIO_COMPOSE" ]] || { echo "❌ MinIO compose 없음: $MINIO_COMPOSE"; exit 1; }
   [[ -f "$ELK_COMPOSE" ]] || { echo "❌ ELK compose 없음: $ELK_COMPOSE"; exit 1; }
+  [[ -f "$GEO_COMPOSE" ]] || { echo "❌ GEO compose 없음: $GEO_COMPOSE"; exit 1; }
 
   [[ -d "$MINIO_KUSTOMIZE_DIR" ]] || { echo "❌ MinIO Kustomize dir 없음: $MINIO_KUSTOMIZE_DIR"; exit 1; }
   [[ -d "$ELK_KUSTOMIZE_DIR" ]] || { echo "❌ ELK Kustomize dir 없음: $ELK_KUSTOMIZE_DIR"; exit 1; }
@@ -130,7 +134,7 @@ usage() {
 
 targets:
   all (default)
-  db | redis | minio | elk
+  db | redis | minio | elk | geo
   es | kibana   (restart/logs/status 용도)
   filebeat      (k8s DaemonSet)
 
@@ -155,6 +159,8 @@ commands:
   homelab up
   homelab up elk
   homelab down elk
+  homelab up geo
+  homelab logs geo
   homelab up filebeat
   homelab edge-up filebeat
   homelab restart es
@@ -206,13 +212,15 @@ docker_up_target() {
       wait $pid1 $pid2
       dc "$MINIO_DIR" "$MINIO_COMPOSE" up -d
       dc "$ELK_DIR" "$ELK_COMPOSE" up -d
+      dc "$GEO_DIR" "$GEO_COMPOSE" up -d
       ;;
     db) dc "$DB_DIR" "$DB_COMPOSE" up -d ;;
     redis) dc "$REDIS_DIR" "$REDIS_COMPOSE" up -d ;;
     minio) dc "$MINIO_DIR" "$MINIO_COMPOSE" up -d ;;
     elk) dc "$ELK_DIR" "$ELK_COMPOSE" up -d ;;
+    geo) dc "$GEO_DIR" "$GEO_COMPOSE" up -d ;;
     *)
-      echo "❌ up은 target=all|db|redis|minio|elk 만 지원합니다. (es/kibana는 elk로 올리세요)"
+      echo "❌ up은 target=all|db|redis|minio|elk|geo 만 지원합니다. (es/kibana는 elk로 올리세요)"
       exit 1
       ;;
   esac
@@ -222,6 +230,7 @@ docker_down_target() {
   local t="$1"
   case "$t" in
     all)
+      dc "$GEO_DIR" "$GEO_COMPOSE" down || true
       dc "$ELK_DIR" "$ELK_COMPOSE" down || true
       dc "$MINIO_DIR" "$MINIO_COMPOSE" down || true
       dc "$REDIS_DIR" "$REDIS_COMPOSE" down || true
@@ -231,8 +240,9 @@ docker_down_target() {
     redis) dc "$REDIS_DIR" "$REDIS_COMPOSE" down || true ;;
     minio) dc "$MINIO_DIR" "$MINIO_COMPOSE" down || true ;;
     elk) dc "$ELK_DIR" "$ELK_COMPOSE" down || true ;;
+    geo) dc "$GEO_DIR" "$GEO_COMPOSE" down || true ;;
     *)
-      echo "❌ down은 target=all|db|redis|minio|elk 만 지원합니다."
+      echo "❌ down은 target=all|db|redis|minio|elk|geo 만 지원합니다."
       exit 1
       ;;
   esac
@@ -242,7 +252,7 @@ docker_restart_target() {
   local t="$1"
   case "$t" in
     all)
-      docker restart db redis minio es kibana >/dev/null 2>&1 || true
+      docker restart db redis minio es kibana geoipupdate geo-api >/dev/null 2>&1 || true
       ;;
     db) docker restart db ;;
     redis) docker restart redis ;;
@@ -250,8 +260,9 @@ docker_restart_target() {
     elk) docker restart es kibana ;;
     es) docker restart es ;;
     kibana) docker restart kibana ;;
+    geo) docker restart geoipupdate geo-api ;;
     *)
-      echo "❌ restart target: all|db|redis|minio|elk|es|kibana"
+      echo "❌ restart target: all|db|redis|minio|elk|geo|es|kibana"
       exit 1
       ;;
   esac
@@ -265,15 +276,17 @@ docker_status_target() {
       dc "$REDIS_DIR" "$REDIS_COMPOSE" ps || true
       dc "$MINIO_DIR" "$MINIO_COMPOSE" ps || true
       dc "$ELK_DIR" "$ELK_COMPOSE" ps || true
+      dc "$GEO_DIR" "$GEO_COMPOSE" ps || true
       ;;
     db) dc "$DB_DIR" "$DB_COMPOSE" ps || true ;;
     redis) dc "$REDIS_DIR" "$REDIS_COMPOSE" ps || true ;;
     minio) dc "$MINIO_DIR" "$MINIO_COMPOSE" ps || true ;;
     elk) dc "$ELK_DIR" "$ELK_COMPOSE" ps || true ;;
+    geo) dc "$GEO_DIR" "$GEO_COMPOSE" ps || true ;;
     es) docker ps --filter "name=^/es$" ;;
     kibana) docker ps --filter "name=^/kibana$" ;;
     *)
-      echo "❌ status target: all|db|redis|minio|elk|es|kibana"
+      echo "❌ status target: all|db|redis|minio|elk|geo|es|kibana"
       exit 1
       ;;
   esac
@@ -287,17 +300,19 @@ docker_logs_target() {
       (cd "$REDIS_DIR" && docker compose -f "$REDIS_COMPOSE" logs -f) & pid2=$!
       (cd "$MINIO_DIR" && docker compose -f "$MINIO_COMPOSE" logs -f) & pid3=$!
       (cd "$ELK_DIR" && docker compose -f "$ELK_COMPOSE" logs -f) & pid4=$!
-      trap 'kill $pid1 $pid2 $pid3 $pid4 2>/dev/null || true' INT TERM
-      wait $pid1 $pid2 $pid3 $pid4
+      (cd "$GEO_DIR" && docker compose -f "$GEO_COMPOSE" logs -f) & pid5=$!
+      trap 'kill $pid1 $pid2 $pid3 $pid4 $pid5 2>/dev/null || true' INT TERM
+      wait $pid1 $pid2 $pid3 $pid4 $pid5
       ;;
     db) dc "$DB_DIR" "$DB_COMPOSE" logs -f ;;
     redis) dc "$REDIS_DIR" "$REDIS_COMPOSE" logs -f ;;
     minio) dc "$MINIO_DIR" "$MINIO_COMPOSE" logs -f ;;
     elk) dc "$ELK_DIR" "$ELK_COMPOSE" logs -f ;;
+    geo) dc "$GEO_DIR" "$GEO_COMPOSE" logs -f ;;
     es) docker logs -f es ;;
     kibana) docker logs -f kibana ;;
     *)
-      echo "❌ logs target: all|db|redis|minio|elk|es|kibana"
+      echo "❌ logs target: all|db|redis|minio|elk|geo|es|kibana"
       exit 1
       ;;
   esac
@@ -357,7 +372,7 @@ case "$cmd" in
       minio) edge_apply_target minio ;;
       elk) edge_apply_target elk ;;
       filebeat) edge_apply_target filebeat ;;
-      *) : ;; # db/redis/es/kibana는 edge 없음
+      *) : ;; # db/redis/geo/es/kibana는 edge 없음
     esac
 
     echo "✅ up done"
@@ -432,13 +447,15 @@ case "$cmd" in
         dc "$REDIS_DIR" "$REDIS_COMPOSE" pull || true
         dc "$MINIO_DIR" "$MINIO_COMPOSE" pull || true
         dc "$ELK_DIR" "$ELK_COMPOSE" pull || true
+        dc "$GEO_DIR" "$GEO_COMPOSE" pull || true
         ;;
       db) dc "$DB_DIR" "$DB_COMPOSE" pull || true ;;
       redis) dc "$REDIS_DIR" "$REDIS_COMPOSE" pull || true ;;
       minio) dc "$MINIO_DIR" "$MINIO_COMPOSE" pull || true ;;
       elk) dc "$ELK_DIR" "$ELK_COMPOSE" pull || true ;;
+      geo) dc "$GEO_DIR" "$GEO_COMPOSE" pull || true ;;
       *)
-        echo "❌ docker-pull target: all|db|redis|minio|elk"
+        echo "❌ docker-pull target: all|db|redis|minio|elk|geo"
         exit 1
         ;;
     esac

@@ -1,0 +1,36 @@
+services:
+  geoipupdate:
+    image: maxmindinc/geoipupdate
+    container_name: geoipupdate
+    restart: unless-stopped
+    environment:
+      GEOIPUPDATE_ACCOUNT_ID: "${GEOIPUPDATE_ACCOUNT_ID}"
+      GEOIPUPDATE_LICENSE_KEY: "${GEOIPUPDATE_LICENSE_KEY}"
+      GEOIPUPDATE_EDITION_IDS: "GeoLite2-City GeoLite2-ASN"
+      GEOIPUPDATE_FREQUENCY: 48
+      GEOIPUPDATE_VERBOSE: 1
+    volumes:
+      - ./data:/usr/share/GeoIP
+      - ./geoip.conf:/etc/GeoIP.conf:ro
+
+  geo-api:
+    build:
+      context: .
+      dockerfile: geo-api.dockerfile
+    container_name: geo-api
+    restart: unless-stopped
+    environment:
+      PORT: 9010
+      GEOIP_DB_CITY: /geoip/GeoLite2-City.mmdb
+      GEOIP_DB_ASN: /geoip/GeoLite2-ASN.mmdb
+    volumes:
+      - ./data:/geoip:ro
+    ports:
+      - "9010:9010"
+    depends_on:
+      - geoipupdate
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9010/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
